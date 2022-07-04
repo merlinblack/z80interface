@@ -1,0 +1,66 @@
+ifndef TARGET
+$(error TARGET not defined. This file souhld not be run directly)
+endif
+CC=avr-gcc
+CFLAGS=-g -Os -Wall -mcall-prologues -mmcu=$(MCU) -DF_CPU=$(F_CPU)
+OBJ2HEX=avr-objcopy
+DEVICE?=linuxspi
+PORT?=/dev/spidev0.0
+PORT:=$(if $(PORT),-P $(PORT))
+BAUD:=$(if $(BAUD),-b $(BAUD))
+AVRDUDE=avrdude -p $(AVRDUDEMCU) $(PORT) -c $(DEVICE) $(BAUD)
+
+LFUSE:=$(if $(LFUSE),-U lfuse:w:$(LFUSE):m)
+HFUSE:=$(if $(HFUSE),-U hfuse:w:$(HFUSE):m)
+EFUSE:=$(if $(EFUSE),-U efuse:w:$(EFUSE):m)
+
+all: $(OBJS)
+	$(CC) $(CFLAGS) $(OBJS) $(TARGET).c -o $(TARGET).elf
+	$(OBJ2HEX) -R .eeprom -O ihex $(TARGET).elf $(TARGET).hex
+	avr-objdump -Pmem-usage $(TARGET).elf
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+explore:
+	$(CC) $(CFLAGS) -S -fverbose-asm $(TARGET).c
+
+flash: install
+install: all
+	@if [ '$(DEVICE)' == 'linuxspi' ]; then \
+		gpio -g mode 5 out; \
+		gpio -g write 5 0; \
+	fi
+
+	$(AVRDUDE) -U flash:w:$(TARGET).hex
+
+	@if [ '$(DEVICE)' == 'linuxspi' ]; then \
+		gpio -g write 5 1; \
+	fi
+
+read:
+	@if [ '$(DEVICE)' == 'linuxspi' ]; then \
+		gpio -g mode 5 out; \
+		gpio -g write 5 0; \
+	fi
+
+	$(AVRDUDE) -v
+
+	@if [ '$(DEVICE)' == 'linuxspi' ]; then \
+		gpio -g write 5 1; \
+	fi
+
+fuse:
+	@if [ '$(DEVICE)' == 'linuxspi' ]; then \
+		gpio -g mode 5 out; \
+		gpio -g write 5 0; \
+	fi
+
+	$(AVRDUDE) $(LFUSE) $(HFUSE) $(EFUSE)
+
+	@if [ '$(DEVICE)' == 'linuxspi' ]; then \
+		gpio -g write 5 1; \
+	fi
+
+clean:
+	rm -f *.hex *.obj *.o $(TARGET).elf $(TARGET).s
