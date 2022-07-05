@@ -1,7 +1,7 @@
 MCU=atmega4809
 AVRDUDEMCU=$(MCU)
 TARGET=z80interface
-OBJS=twi.o mcp23017.o
+OBJS=twi.o mcp23017.o timer.o usart.o button.o
 DEVICE=pickit4_updi
 PORT=usb
 

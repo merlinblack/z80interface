@@ -14,7 +14,9 @@ LFUSE:=$(if $(LFUSE),-U lfuse:w:$(LFUSE):m)
 HFUSE:=$(if $(HFUSE),-U hfuse:w:$(HFUSE):m)
 EFUSE:=$(if $(EFUSE),-U efuse:w:$(EFUSE):m)
 
-all: $(OBJS)
+all: $(TARGET).hex
+
+$(TARGET).hex: $(OBJS)
 	$(CC) $(CFLAGS) $(OBJS) $(TARGET).c -o $(TARGET).elf
 	$(OBJ2HEX) -R .eeprom -O ihex $(TARGET).elf $(TARGET).hex
 	avr-objdump -Pmem-usage $(TARGET).elf
