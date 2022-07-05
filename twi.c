@@ -349,7 +349,7 @@ uint8_t TWI_MasterWriteRead(uint8_t slave_address,
       goto trigger_action;
     }
 
-		printf("TWI Result: %d\r\n", master_result);
+		//printf("TWI Result: %d\r\n", master_result);
     uint8_t ret = 0;
     if (master_bytesToRead > 0)
     {

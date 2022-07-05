@@ -51,6 +51,8 @@ bool mcp23017_init(uint8_t address)
 {
 	if (!mcp23017_write_byte( address, _IOCON, 0x00 ))
 		return false;
+
+	return true;
 }
 
 bool mcp23017_set_direction(uint8_t address, uint16_t mask)
@@ -69,18 +71,10 @@ uint16_t mcp23017_read_both(uint8_t address)
 	uint8_t buffer[2];
 
 	if (TWI_MasterWrite( address, &out, 1, false ))
-	{
-		printf("Failed to send register.\r\n");
 		return 0;
-	}
 
 	if (TWI_MasterRead( address, buffer, 2, true) != 2)
-	{
-		printf("Failed to read bytes.\r\n");
 		return 0;
-	}
-
-	printf( "mcp buffer: %X - %X\r\n", buffer[0], buffer[1] );
 
 	return buffer[0] + (buffer[1] << 8);
 }
