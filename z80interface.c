@@ -78,6 +78,65 @@ void init_pins()
 	BUSACK_PORT.DIRCLR = BUSACK_PIN_bm;
 }
 
+void delay(uint16_t delay)
+{
+	unsigned long end = millis() + delay;
+	while (millis() < end);
+}
+
+void waitForBus()
+{
+	BUSREQ_PORT.OUTCLR = BUSREQ_PIN_bm;
+	while( BUSACK_PORT.IN & BUSACK_PIN_bm)
+		CLOCK_PORT.OUTTGL = CLOCK_PIN_bm;
+}
+
+void takeBus()
+{
+	waitForBus();
+
+	/* init bus */
+	mcp23017_set_direction(MCP23017_ADDR, 0x0000);
+	MREQ_PORT.DIRSET = MREQ_PIN_bm;
+	IORQ_PORT.DIRSET = IORQ_PIN_bm;
+	WR_PORT.DIRSET = WR_PIN_bm;
+	RD_PORT.DIRSET = RD_PIN_bm;
+	/* active low - make them high */
+	MREQ_PORT.OUTSET = MREQ_PIN_bm;
+	IORQ_PORT.OUTSET = IORQ_PIN_bm;
+	WR_PORT.OUTSET = WR_PIN_bm;
+	RD_PORT.OUTSET = RD_PIN_bm;
+}
+
+void releaseBus()
+{
+	WR_PORT.DIRCLR = WR_PIN_bm;
+	RD_PORT.DIRCLR = RD_PIN_bm;
+	MREQ_PORT.DIRCLR = MREQ_PIN_bm;
+	IORQ_PORT.DIRCLR = IORQ_PIN_bm;
+	DATA_PORT.DIRCLR = 0xff;
+	mcp23017_set_direction(MCP23017_ADDR, 0xFFFF);
+
+	BUSREQ_PORT.OUTSET = BUSREQ_PIN_bm;
+}
+
+void readMemory()
+{
+	uint16_t address = 0x8005;
+
+	/* read memory */
+	mcp23017_write_both(MCP23017_ADDR, address);
+	MREQ_PORT.OUTCLR = MREQ_PIN_bm;
+	RD_PORT.OUTCLR = RD_PIN_bm;
+
+	// Don't really need a whole millisecond, but need a delay
+	delay(1);
+
+	uint8_t data = DATA_VPORT.IN;
+
+	printf( "Got value 0x%X (%d)\r\n", data, data );
+}
+
 int main(void)
 {
 	init_timer();
@@ -101,7 +160,7 @@ int main(void)
 
 	printf("\r\n\n\nBooting Z80 interface\r\nCompiled: %s %s\r\n", __DATE__, __TIME__);
 
-	unsigned long lastTime = 0;
+	unsigned long nextTime = 0;
 	bool stepMode = true;
 	bool run = false;
 	uint8_t outputCountdown = 0;
@@ -109,23 +168,22 @@ int main(void)
 	for (;;) {
 		unsigned long currentTime = millis();
 
-		if (run && currentTime > lastTime) {
+		if (run && currentTime > nextTime) {
 			CLOCK_PORT.OUTTGL = CLOCK_PIN_bm;
-			//lastTime = currentTime + 10;
-			if (stepMode)
-				run = false;
+			//nextTime = currentTime + 10;
 		}
 
 		if (run == false && stepMode == true && button_released(&stepButton, currentTime)) {
-			lastTime = currentTime;
-			run = true;
-			CLOCK_PORT.OUTSET = CLOCK_PIN_bm;
+			CLOCK_PORT.OUTTGL = CLOCK_PIN_bm;
+			delay(100);
+			CLOCK_PORT.OUTTGL = CLOCK_PIN_bm;
 		}
 
 		if (button_released(&modeButton, currentTime)) {
 			stepMode = !stepMode;
 			if (stepMode) {
 				CLOCK_PORT.OUTCLR = CLOCK_PIN_bm;
+				run = false;
 			}
 			else {
 				run = true;
@@ -150,25 +208,36 @@ int main(void)
 			bool writeBit = WR_PORT.IN & WR_PIN_bm;
 			bool mreqBit = MREQ_PORT.IN & MREQ_PIN_bm;
 			bool iorqBit = IORQ_PORT.IN & IORQ_PIN_bm;
+			bool busReqBit = BUSREQ_PORT.IN & BUSREQ_PIN_bm;
+			bool busAckBit = BUSACK_PORT.IN & BUSACK_PIN_bm;
 
 			char in = usart_recieve_char();
-			if (in == 'A')
-				printf("Got A\r\n" );
+			if (in == 'B')
+			{
+				printf("Requesting bus...\r\n");
+				takeBus();
+				printf("Using bus...\r\n");
+				readMemory();
+				printf("Releasing bus...\r\n");
+				releaseBus();
+			}
 
-			printf("%10lu - %4s %7s %04x %02x [%c%c%c%c] '%c' %-100s\r",
+			printf("%10lu - %4s %7s %04x %02x [%c%c%c%c%c%c] '%c' %-100s\r",
 					currentTime, 
 					(stepMode) ? "Step" : "Run",
 					(run) ? "Running" : "",
 					address,
 					data,
-					readBit  ? ' ' : 'R',
-					writeBit ? ' ' : 'W',
-					mreqBit  ? ' ' : 'M',
-					iorqBit  ? ' ' : 'I',
+					readBit    ? ' ' : 'R',
+					writeBit   ? ' ' : 'W',
+					mreqBit    ? ' ' : 'M',
+					iorqBit    ? ' ' : 'I',
+					busReqBit  ? ' ' : 'Q',
+					busAckBit  ? ' ' : 'A',
 					(data > 32 && data < 128) ? data : ' ',
 					message
 					);
-			//unsigned long delay = millis()+1000; while(millis()<delay);
+			//delay(1000);
 		}
 	}
 
