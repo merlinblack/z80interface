@@ -74,7 +74,7 @@ void init_pins()
 	IORQ_PORT.DIRCLR = IORQ_PIN_bm;
 	IORQ_PORT.PIN3CTRL |= PORT_ISC_FALLING_gc;
 	BUSREQ_PORT.DIRSET = BUSREQ_PIN_bm;
-	BUSREQ_PORT.OUT |= BUSREQ_PIN_bm;		// Active low - turn it off.
+	BUSREQ_PORT.OUTSET = BUSREQ_PIN_bm;		// Active low - i.e. turn it off.
 	BUSACK_PORT.DIRCLR = BUSACK_PIN_bm;
 }
 
@@ -151,6 +151,10 @@ int main(void)
 			bool mreqBit = MREQ_PORT.IN & MREQ_PIN_bm;
 			bool iorqBit = IORQ_PORT.IN & IORQ_PIN_bm;
 
+			char in = usart_recieve_char();
+			if (in == 'A')
+				printf("Got A\r\n" );
+
 			printf("%10lu - %4s %7s %04x %02x [%c%c%c%c] '%c' %-100s\r",
 					currentTime, 
 					(stepMode) ? "Step" : "Run",
@@ -164,6 +168,7 @@ int main(void)
 					(data > 32 && data < 128) ? data : ' ',
 					message
 					);
+			//unsigned long delay = millis()+1000; while(millis()<delay);
 		}
 	}
 
