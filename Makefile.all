@@ -17,7 +17,7 @@ EFUSE:=$(if $(EFUSE),-U efuse:w:$(EFUSE):m)
 all: $(TARGET).hex
 
 $(TARGET).hex: $(OBJS)
-	$(CC) $(CFLAGS) $(OBJS) $(TARGET).c -o $(TARGET).elf
+	$(CC) $(CFLAGS) $(OBJS) -o $(TARGET).elf
 	$(OBJ2HEX) -R .eeprom -O ihex $(TARGET).elf $(TARGET).hex
 	avr-objdump -Pmem-usage $(TARGET).elf
 
