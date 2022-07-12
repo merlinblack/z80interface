@@ -3,8 +3,8 @@
 #include <stdio.h>
 #include <stdbool.h>
 
-#define RECIEVE_BUFFER_SIZE 768 
-#define XOFF_LIMIT (RECIEVE_BUFFER_SIZE - 32)
+#define RECIEVE_BUFFER_SIZE 128 
+#define XOFF_LIMIT (RECIEVE_BUFFER_SIZE - 20)
 #define XON_LIMIT 0
 #define XON 0x11
 #define XOFF 0x13
@@ -28,9 +28,9 @@ int usart_print_char(char c, FILE *stream)
 
 FILE usart_stream = FDEV_SETUP_STREAM(usart_print_char, NULL, _FDEV_SETUP_WRITE);
 
-volatile uint16_t recieve_end;
-volatile uint16_t recieve_start;
-volatile uint16_t recieve_count;
+volatile uint8_t recieve_end;
+volatile uint8_t recieve_start;
+volatile uint8_t recieve_count;
 volatile bool xflow_halted;
 char recieve_buffer[RECIEVE_BUFFER_SIZE];
 
