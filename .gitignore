@@ -2,3 +2,5 @@
 *.s
 *.elf
 *.hex
+.idea
+*~

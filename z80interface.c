@@ -1,5 +1,6 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
+#include <util/delay.h>
 
 #include <stdio.h>
 #include <stdbool.h>
@@ -120,21 +121,37 @@ void releaseBus()
 	BUSREQ_PORT.OUTSET = BUSREQ_PIN_bm;
 }
 
-void readMemory()
+uint8_t readMemory(uint16_t address)
 {
-	uint16_t address = 0x8005;
-
-	/* read memory */
+	DATA_PORT.DIRCLR = 0xFF;
 	mcp23017_write_both(MCP23017_ADDR, address);
 	MREQ_PORT.OUTCLR = MREQ_PIN_bm;
 	RD_PORT.OUTCLR = RD_PIN_bm;
 
-	// Don't really need a whole millisecond, but need a delay
-	delay(1);
+	_delay_us(1);
 
 	uint8_t data = DATA_VPORT.IN;
 
-	printf( "Got value 0x%X (%d)\r\n", data, data );
+	RD_PORT.OUTSET = RD_PIN_bm;
+	MREQ_PORT.OUTSET = MREQ_PIN_bm;
+
+	return data;
+}
+
+void writeMemory(uint16_t address, uint8_t data)
+{
+	DATA_PORT.DIRSET = 0xFF;
+	mcp23017_write_both(MCP23017_ADDR, address);
+	MREQ_PORT.OUTCLR = MREQ_PIN_bm;
+
+	DATA_VPORT.IN = data;
+
+	WR_PORT.OUTCLR = WR_PIN_bm;
+
+	_delay_us(1);
+
+	WR_PORT.OUTSET = WR_PIN_bm;
+	MREQ_PORT.OUTSET = MREQ_PIN_bm;
 }
 
 int main(void)
@@ -170,7 +187,7 @@ int main(void)
 
 		if (run && currentTime > nextTime) {
 			CLOCK_PORT.OUTTGL = CLOCK_PIN_bm;
-			//nextTime = currentTime + 10;
+			nextTime = currentTime + 1;
 		}
 
 		if (run == false && stepMode == true && button_released(&stepButton, currentTime)) {
@@ -179,16 +196,6 @@ int main(void)
 			CLOCK_PORT.OUTTGL = CLOCK_PIN_bm;
 		}
 
-		if (button_released(&modeButton, currentTime)) {
-			stepMode = !stepMode;
-			if (stepMode) {
-				CLOCK_PORT.OUTCLR = CLOCK_PIN_bm;
-				run = false;
-			}
-			else {
-				run = true;
-			}
-		}
 
 		if (haveRecievedIO) {
 			message[messagePos++] = recievedIO;
@@ -212,16 +219,52 @@ int main(void)
 			bool busAckBit = BUSACK_PORT.IN & BUSACK_PIN_bm;
 
 			char in = usart_recieve_char();
-			if (in == 'B')
+
+			if (in)
+				printf("%c", in);
+
+			if (in == 'B' && 0)
 			{
 				printf("Requesting bus...\r\n");
 				takeBus();
 				printf("Using bus...\r\n");
-				readMemory();
+				uint8_t data = readMemory(0x8005);
+				printf("Releasing bus...\r\n");
+				releaseBus();
+
+				printf( "Got value 0x%X (%d)\r\n", data, data );
+			}
+
+			if (in == 'A' && 0)
+			{
+				printf("Requesting bus...\r\n");
+				takeBus();
+				printf("Using bus...\r\n");
+				for (uint16_t address = 0x8005; address < 0xFFFF; address++)
+				{
+					if (address % 0x1000 == 0)
+						printf( "Address: %X\r\n", address );
+					if (address % 2 == 0)
+						writeMemory(address, 0xAA);
+					else
+						writeMemory(address, 0x55);
+				}
 				printf("Releasing bus...\r\n");
 				releaseBus();
 			}
 
+			if (button_released(&modeButton, currentTime)) // || in == 'R') {
+		  {
+				stepMode = !stepMode;
+				if (stepMode) {
+					CLOCK_PORT.OUTCLR = CLOCK_PIN_bm;
+					run = false;
+				}
+				else {
+					run = true;
+				}
+			}
+			/*
 			printf("%10lu - %4s %7s %04x %02x [%c%c%c%c%c%c] '%c' %-100s\r",
 					currentTime, 
 					(stepMode) ? "Step" : "Run",
@@ -237,6 +280,7 @@ int main(void)
 					(data > 32 && data < 128) ? data : ' ',
 					message
 					);
+			*/		
 			//delay(1000);
 		}
 	}

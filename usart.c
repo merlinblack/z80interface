@@ -1,8 +1,13 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <stdio.h>
+#include <stdbool.h>
 
-#define RECIEVE_BUFFER_SIZE 64
+#define RECIEVE_BUFFER_SIZE 768 
+#define XOFF_LIMIT (RECIEVE_BUFFER_SIZE - 32)
+#define XON_LIMIT 0
+#define XON 0x11
+#define XOFF 0x13
 
 void usart_send_char(char c)
 {
@@ -23,29 +28,39 @@ int usart_print_char(char c, FILE *stream)
 
 FILE usart_stream = FDEV_SETUP_STREAM(usart_print_char, NULL, _FDEV_SETUP_WRITE);
 
-volatile uint8_t recieve_end;
-volatile uint8_t recieve_start;
+volatile uint16_t recieve_end;
+volatile uint16_t recieve_start;
+volatile uint16_t recieve_count;
+volatile bool xflow_halted;
 char recieve_buffer[RECIEVE_BUFFER_SIZE];
 
 ISR(USART0_RXC_vect)
 {
 	if (recieve_end == recieve_start-1)
 	{
-		printf("\r\nError: USART recieve buffer full.\r\n");
+		printf("\r\nError: USART recieve buffer full. (%d)", recieve_count);
 		// Throw away recieved byte
 		(void)USART0.RXDATAL;
 		return;
 	}
 
 	recieve_buffer[recieve_end++] = USART0.RXDATAL;
+	recieve_count++;
 
 	if (recieve_end > RECIEVE_BUFFER_SIZE-1)
 		recieve_end = 0;
+
+	if (!xflow_halted && recieve_count > XOFF_LIMIT)
+	{
+		xflow_halted = true;
+		usart_send_char(XOFF);
+		//printf("\r\nSent XOFF\n\r");
+	}
 }
 
 char usart_recieve_char()
 {
-	//printf("\r%d %d %c", recieve_start, recieve_end, recieve_buffer[recieve_start]);
+	//printf("\r%d %d %d %c", recieve_start, recieve_end, recieve_count, recieve_buffer[recieve_start]);
 	if (recieve_start == recieve_end)
 		return 0;
 
@@ -56,6 +71,17 @@ char usart_recieve_char()
 
 	if (recieve_start > RECIEVE_BUFFER_SIZE-1)
 		recieve_start = 0;
+
+	recieve_count--;
+	if (xflow_halted)
+	{
+		if (recieve_count == XON_LIMIT)
+		{
+			xflow_halted = false;
+			usart_send_char(XON);
+		  //printf("\r\nSent XON\n\r");
+		}
+	}
 
 	SREG = oldSREG;
 
@@ -68,6 +94,8 @@ void init_usart()
 {
 	recieve_end = 0;
 	recieve_start = 0;
+	recieve_count = 0;
+	xflow_halted = false;
 	/* Set baud rate */
 	USART0.BAUD = USART_BAUD_RATE(115200);
 	/* Enable TX and RX for USART0 */
