@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdlib.h>
 
 #include "twi.h"
 #include "mcp23017.h"
@@ -148,13 +149,12 @@ void writeMemory(uint16_t address, uint8_t data)
 	mcp23017_write_both(MCP23017_ADDR, address);
 	MREQ_PORT.OUTCLR = MREQ_PIN_bm;
 
-	DATA_VPORT.IN = data;
+	DATA_VPORT.OUT = data;
 
 	WR_PORT.OUTCLR = WR_PIN_bm;
-
 	_delay_us(1);
-
 	WR_PORT.OUTSET = WR_PIN_bm;
+
 	MREQ_PORT.OUTSET = MREQ_PIN_bm;
 }
 
@@ -162,6 +162,19 @@ char command[MAX_COMMAND_LEN];
 uint8_t commandPos = 0;
 bool stepMode = true;
 bool run = false;
+bool display = false;
+
+uint8_t hexToInt2(const char *ptr)
+{
+  char buffer[] = {*ptr++, *ptr, 0};
+  return (uint8_t)strtol(buffer, NULL, 16);
+}
+
+uint16_t hexToInt4(const char *ptr)
+{
+  char buffer[] = {*ptr++, *ptr++, *ptr++, *ptr, 0};
+  return (uint16_t)strtol(buffer, NULL, 16);
+}
 
 void dumpMemory(char *parameters)
 {
@@ -169,6 +182,12 @@ void dumpMemory(char *parameters)
 	uint16_t len = 512;
 	uint16_t pos = 0;
 	uint8_t buffer[32];
+
+	while(!isalnum(*parameters) && *parameters)
+		parameters++;
+
+	if (strlen(parameters) == 4)
+		address = hexToInt4(parameters);
 
 	takeBus();
 
@@ -201,6 +220,122 @@ void dumpMemory(char *parameters)
 	address += pos;
 }
 
+void writeBuffer( uint16_t address, uint8_t *buffer, uint8_t len )
+{
+	for (uint8_t pos = 0; pos < len; pos++, address++, buffer++)
+	{
+		writeMemory(address, *buffer);
+	}
+}
+
+char getch(uint16_t timeLimit)
+{
+	unsigned long limit = millis() + timeLimit;
+	char in = 0;
+
+	while (!in && millis() < limit)
+		in = usart_recieve_char();
+
+	return in;
+}
+
+void loadMemory(char *parameters)
+{
+	uint16_t base_address = 0x8000;
+	uint8_t byteBuffer[64];
+	bool finished = false;
+	char in;
+	char inputBuffer[8];
+
+	while(!isalnum(*parameters) && *parameters)
+		parameters++;
+
+	if (strlen(parameters) == 4)
+		base_address = hexToInt4(parameters);
+
+	printf("Loading hex file starting at address: %04X\r\n", base_address);
+
+	takeBus();
+
+	while(!finished)
+	{
+		// Process one line.
+		in = getch(1000);
+
+		if (!in)
+		{
+			printf("ERROR: Took too long to send hex file.\r\n");
+			finished = true;
+			continue;
+		}
+
+		if (in != ':')
+		{
+			printf("ERROR: bad format for hex file. Got %X instead of 3A.\r\n", in);
+			finished = true;
+			continue;
+		}
+
+		for (uint8_t i = 0; i < 8; i++)
+		{
+			in = getch(10);
+
+			if (!in)
+			{
+				printf("ERROR: hex file taking too long.\r\n");
+				finished = true;
+				continue;
+			}
+			inputBuffer[i] = in;
+		}
+
+		uint8_t len = hexToInt2(&inputBuffer[0]);
+		uint16_t offset = hexToInt4(&inputBuffer[2]);
+		uint8_t type = hexToInt2(&inputBuffer[6]);
+
+		if (type == 0)
+		{
+			printf("Data record - len: %02X offset: %04X\r\n", len, offset );
+			uint16_t check = len + (offset & 0xff) + (offset>>8);
+			for (uint8_t i = 0; i < len; i++)
+			{
+				inputBuffer[0] = getch(10);
+				inputBuffer[1] = getch(10);
+				byteBuffer[i] = hexToInt2(inputBuffer);
+				printf("%02X ", byteBuffer[i]);
+				check += byteBuffer[i];
+			}
+			printf("\r\n");
+			inputBuffer[0] = getch(10);
+			inputBuffer[1] = getch(10);
+			check += hexToInt2(inputBuffer);
+			if ((check & 0xff) != 0)
+			{
+				printf("ERROR: checksum not correct.\r\n");
+				finished = true;
+				continue;
+			}
+
+			printf("Checksum ok - writing buffer.\r\n");
+			writeBuffer( base_address + offset, byteBuffer, len);
+		}
+
+		if (type == 1)
+		{
+			// Ignore checksum for this type.
+			getch(10);
+			getch(10);
+			finished = true;
+			printf("DONE: Hex file loaded successfully.");
+		}
+
+		// Skip \n
+		getch(10);
+	}
+
+	releaseBus();
+}
+
 void modeChange()
 {
 	if (stepMode) {
@@ -220,27 +355,44 @@ void executeCommand(char *command)
 
 	printf("\r\nExecuting: %s\r\n", command);
 
-	if (strncmp("STEP", command, MAX_COMMAND_LEN) == 0 || command[0] == 0)
+	if (strncmp("STEP", command, 4) == 0 || command[0] == 0)
 	{
+		display = true;
 		CLOCK_PORT.OUTTGL = CLOCK_PIN_bm;
 		delay(100);
 		CLOCK_PORT.OUTTGL = CLOCK_PIN_bm;
+		return;
 	}
 
-	if (strncmp("RUN", command, MAX_COMMAND_LEN) == 0)
+	if (strncmp("RUN", command, 3) == 0)
 	{
 		stepMode = false;
 		modeChange();
+		return;
 	}
 
 	if (strncmp("DUMP", command, 4) == 0)
 	{
 		dumpMemory(&command[4]);
+		return;
+	}
+
+	if (strncmp("DISPLAY", command, 4) == 0)
+	{
+		display = true;
+		return;
 	}
 
 	if (strncmp("D", command, 1) == 0)
 	{
 		dumpMemory(&command[1]);
+		return;
+	}
+
+	if (strncmp("LOAD", command, 4) == 0)
+	{
+		loadMemory(&command[4]);
+		return;
 	}
 }
 
@@ -269,6 +421,8 @@ void processTerminalInput()
  	{
 		printf("ERROR CMD overflow. Resetting.\r\n");
 		commandPos = 0;
+		while (in)
+			in = getch(10);
 	}
 }
 
@@ -321,7 +475,7 @@ int main(void)
 			haveRecievedIO = false;
 		}
 
-		if (stepMode) {
+		if (stepMode && display) {
 			uint8_t data = DATA_VPORT.IN;
 			uint16_t address = mcp23017_read_both(MCP23017_ADDR);
 			bool readBit = RD_PORT.IN & RD_PIN_bm;

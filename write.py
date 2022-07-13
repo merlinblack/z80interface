@@ -34,11 +34,13 @@ def main():
   while (ser.in_waiting):
     print(ser.readline().decode())
 
-  with open('z80interface.c', 'r') as f:
+  with open('ramimage.hex', 'r') as f:
+    print(send(ser, 'Load 8000\r'), end='')
     for line in f:
       print(send(ser, line), end='')
 
-  time.sleep(.1)
+  print(send(ser, 'Dump 8000\r'), end='')
+  time.sleep(1)
   while ser.in_waiting:
     tail = ser.readline().decode()
     print(tail, end='')

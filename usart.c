@@ -4,7 +4,7 @@
 #include <stdbool.h>
 
 #define RECIEVE_BUFFER_SIZE 128 
-#define XOFF_LIMIT (RECIEVE_BUFFER_SIZE - 20)
+#define XOFF_LIMIT (RECIEVE_BUFFER_SIZE - 32)
 #define XON_LIMIT 0
 #define XON 0x11
 #define XOFF 0x13
