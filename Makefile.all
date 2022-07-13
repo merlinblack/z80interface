@@ -65,4 +65,4 @@ fuse:
 	fi
 
 clean:
-	rm -f *.hex *.obj *.o $(TARGET).elf $(TARGET).s
+	rm -f $(TARGET).hex *.o $(TARGET).elf $(TARGET).s
