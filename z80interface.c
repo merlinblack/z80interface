@@ -4,12 +4,16 @@
 
 #include <stdio.h>
 #include <stdbool.h>
+#include <string.h>
+#include <ctype.h>
 
 #include "twi.h"
 #include "mcp23017.h"
 #include "timer.h"
 #include "usart.h"
 #include "button.h"
+
+#define MAX_COMMAND_LEN 32
 
 #define CLOCK_PIN_bm PIN0_bm
 #define CLOCK_PORT PORTF
@@ -154,6 +158,120 @@ void writeMemory(uint16_t address, uint8_t data)
 	MREQ_PORT.OUTSET = MREQ_PIN_bm;
 }
 
+char command[MAX_COMMAND_LEN];
+uint8_t commandPos = 0;
+bool stepMode = true;
+bool run = false;
+
+void dumpMemory(char *parameters)
+{
+	static uint16_t address = 0x8000;
+	uint16_t len = 512;
+	uint16_t pos = 0;
+	uint8_t buffer[32];
+
+	takeBus();
+
+	printf( "     | " );
+	for (uint8_t byte = 0; byte < 32; byte++)
+	{
+		printf( "%02X ", byte );
+	}
+	printf( "\r\n" );
+
+	while (pos < len)
+	{
+		printf( "%04X | ", address + pos);
+		for (uint8_t byte = 0; byte < 32; byte++)
+		{
+			buffer[byte] = readMemory(address + pos + byte);
+			printf( "%02X ", buffer[byte]);
+		}
+		printf( " | " );
+		for (uint8_t byte = 0; byte < 32; byte++)
+		{
+			printf( "%c", isgraph(buffer[byte]) ? buffer[byte] : '.' );
+		}
+		printf("\r\n");
+		pos += 32;
+	}
+
+	releaseBus();
+
+	address += pos;
+}
+
+void modeChange()
+{
+	if (stepMode) {
+		CLOCK_PORT.OUTCLR = CLOCK_PIN_bm;
+		run = false;
+	}
+	else {
+		printf("\r\nRunning...\r\n");
+		run = true;
+	}
+}
+
+void executeCommand(char *command)
+{
+	for (char *c = command; *c != 0; c++)
+		*c = toupper(*c);
+
+	printf("\r\nExecuting: %s\r\n", command);
+
+	if (strncmp("STEP", command, MAX_COMMAND_LEN) == 0 || command[0] == 0)
+	{
+		CLOCK_PORT.OUTTGL = CLOCK_PIN_bm;
+		delay(100);
+		CLOCK_PORT.OUTTGL = CLOCK_PIN_bm;
+	}
+
+	if (strncmp("RUN", command, MAX_COMMAND_LEN) == 0)
+	{
+		stepMode = false;
+		modeChange();
+	}
+
+	if (strncmp("DUMP", command, 4) == 0)
+	{
+		dumpMemory(&command[4]);
+	}
+
+	if (strncmp("D", command, 1) == 0)
+	{
+		dumpMemory(&command[1]);
+	}
+}
+
+void processTerminalInput()
+{
+
+	char in = usart_recieve_char();
+
+	if (!in)
+		return;
+
+	if (in == '\r')
+	{
+		executeCommand(command);
+		commandPos = 0;
+		command[0] = 0;
+	}
+
+	if (in < ' ')
+		return; // Chuck away 0 - 32
+
+	command[commandPos++] = in;
+	command[commandPos] = 0;
+
+	if (commandPos == 31)
+ 	{
+		printf("ERROR CMD overflow. Resetting.\r\n");
+		commandPos = 0;
+	}
+}
+
 int main(void)
 {
 	init_timer();
@@ -172,22 +290,18 @@ int main(void)
 	button stepButton = { "Step", 0, false, STEP_PIN_bm, &STEP_PORT };
 	button modeButton = { "Mode", 0, false, MODE_PIN_bm, &MODE_PORT };
 
-	char message[MAX_MESSAGE] = {0};
-	uint8_t messagePos = 0;
-
 	printf("\r\n\n\nBooting Z80 interface\r\nCompiled: %s %s\r\n", __DATE__, __TIME__);
 
 	unsigned long nextTime = 0;
-	bool stepMode = true;
-	bool run = false;
-	uint8_t outputCountdown = 0;
 
 	for (;;) {
 		unsigned long currentTime = millis();
 
+		processTerminalInput();
+
 		if (run && currentTime > nextTime) {
 			CLOCK_PORT.OUTTGL = CLOCK_PIN_bm;
-			nextTime = currentTime + 1;
+			//nextTime = currentTime + 1;
 		}
 
 		if (run == false && stepMode == true && button_released(&stepButton, currentTime)) {
@@ -196,19 +310,18 @@ int main(void)
 			CLOCK_PORT.OUTTGL = CLOCK_PIN_bm;
 		}
 
+		if (button_released(&modeButton, currentTime))
+		{
+			stepMode = !stepMode;
+			modeChange();
+		}
 
 		if (haveRecievedIO) {
-			message[messagePos++] = recievedIO;
-			message[messagePos] = 0;
-			
-			if (messagePos > MAX_MESSAGE)
-				messagePos = 0;
-
+			printf("%c", recievedIO);
 			haveRecievedIO = false;
 		}
 
-		// Every 256th time.
-		if (!outputCountdown++) {
+		if (stepMode) {
 			uint8_t data = DATA_VPORT.IN;
 			uint16_t address = mcp23017_read_both(MCP23017_ADDR);
 			bool readBit = RD_PORT.IN & RD_PIN_bm;
@@ -218,54 +331,7 @@ int main(void)
 			bool busReqBit = BUSREQ_PORT.IN & BUSREQ_PIN_bm;
 			bool busAckBit = BUSACK_PORT.IN & BUSACK_PIN_bm;
 
-			char in = usart_recieve_char();
-
-			if (in)
-				printf("%c", in);
-
-			if (in == 'B' && 0)
-			{
-				printf("Requesting bus...\r\n");
-				takeBus();
-				printf("Using bus...\r\n");
-				uint8_t data = readMemory(0x8005);
-				printf("Releasing bus...\r\n");
-				releaseBus();
-
-				printf( "Got value 0x%X (%d)\r\n", data, data );
-			}
-
-			if (in == 'A' && 0)
-			{
-				printf("Requesting bus...\r\n");
-				takeBus();
-				printf("Using bus...\r\n");
-				for (uint16_t address = 0x8005; address < 0xFFFF; address++)
-				{
-					if (address % 0x1000 == 0)
-						printf( "Address: %X\r\n", address );
-					if (address % 2 == 0)
-						writeMemory(address, 0xAA);
-					else
-						writeMemory(address, 0x55);
-				}
-				printf("Releasing bus...\r\n");
-				releaseBus();
-			}
-
-			if (button_released(&modeButton, currentTime)) // || in == 'R') {
-		  {
-				stepMode = !stepMode;
-				if (stepMode) {
-					CLOCK_PORT.OUTCLR = CLOCK_PIN_bm;
-					run = false;
-				}
-				else {
-					run = true;
-				}
-			}
-			/*
-			printf("%10lu - %4s %7s %04x %02x [%c%c%c%c%c%c] '%c' %-100s\r",
+			printf("%10lu - %4s %7s %04x %02x [%c%c%c%c%c%c] '%c' >%-32s\r",
 					currentTime, 
 					(stepMode) ? "Step" : "Run",
 					(run) ? "Running" : "",
@@ -278,9 +344,8 @@ int main(void)
 					busReqBit  ? ' ' : 'Q',
 					busAckBit  ? ' ' : 'A',
 					(data > 32 && data < 128) ? data : ' ',
-					message
+					command
 					);
-			*/		
 			//delay(1000);
 		}
 	}

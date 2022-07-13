@@ -4,6 +4,7 @@ import serial
 import time
 
 def send(ser: serial.Serial, line):
+  ret = '';
   xoff = False
   byteIn = 0
   for byteOut in line:
@@ -15,16 +16,18 @@ def send(ser: serial.Serial, line):
         if byteIn == b'\x11':
           xoff = False
         else:
-          print(byteIn.decode(), end='')
+          ret = ret + byteIn.decode();
 
     if xoff:
       while byteIn != b'\x11':
         byteIn = ser.read(1)
         if byteIn != b'\x11':
-          print(byteIn.decode(), end='')
+          ret = ret + byteIn.decode();
       xoff = False
 
     ser.write(byteOut.encode())
+
+  return ret
 
 def main():
   ser = serial.Serial('/dev/ttyACM0', 115200, timeout=10, xonxoff=False)
@@ -33,7 +36,7 @@ def main():
 
   with open('z80interface.c', 'r') as f:
     for line in f:
-      send(ser, line)
+      print(send(ser, line), end='')
 
   time.sleep(.1)
   while ser.in_waiting:
