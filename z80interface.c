@@ -348,6 +348,60 @@ void modeChange()
 	}
 }
 
+void runTo(char *parameters)
+{
+	uint16_t address = 0;
+
+	while(!isalnum(*parameters) && *parameters)
+		parameters++;
+
+	if (strlen(parameters) == 4)
+		address = hexToInt4(parameters);
+
+	if (!address)
+	{
+		printf("Missing or could not understand address.\r\n");
+		return;
+	}
+
+	while(usart_recieve_char())
+		;
+
+	printf( "Running until address %04X is read.\r\n", address);
+
+	bool done = false;
+
+	while (!done)
+	{
+		CLOCK_PORT.OUTTGL = CLOCK_PIN_bm;
+
+		if (haveRecievedIO) {
+			printf("%c", recievedIO);
+			haveRecievedIO = false;
+		}
+
+		if (usart_recieve_char())
+		{
+			printf("Got char - stopping\r\n");
+			done = true;
+		}
+
+		if (mcp23017_read_both(MCP23017_ADDR) == address)
+		{
+			if ( !(MREQ_PORT.IN & MREQ_PIN_bm) && !(RD_PORT.IN & RD_PIN_bm))
+			{
+				printf("Got address - stopping\r\n");
+				done = true;
+			}
+		}
+	}
+
+	stepMode = true;
+	modeChange();
+
+	return;
+}
+
 void executeCommand(char *command)
 {
 	for (char *c = command; *c != 0; c++)
@@ -364,6 +418,12 @@ void executeCommand(char *command)
 		return;
 	}
 
+	if (strncmp("RUNTO", command, 5) == 0)
+	{
+		runTo(&command[5]);
+		return;
+	}
+
 	if (strncmp("RUN", command, 3) == 0)
 	{
 		stepMode = false;
@@ -377,9 +437,15 @@ void executeCommand(char *command)
 		return;
 	}
 
-	if (strncmp("DISPLAY", command, 4) == 0)
+	if (strncmp("DISP", command, 4) == 0)
 	{
 		display = true;
+		return;
+	}
+
+	if (strncmp("NODISP", command, 6) == 0)
+	{
+		display = false;
 		return;
 	}
 
@@ -409,6 +475,14 @@ void processTerminalInput()
 		executeCommand(command);
 		commandPos = 0;
 		command[0] = 0;
+	}
+
+	if (in == 8)
+	{
+		if (commandPos)
+			commandPos--;
+
+		command[commandPos] = 0;
 	}
 
 	if (in < ' ')
@@ -447,6 +521,8 @@ int main(void)
 	printf("\r\n\n\nBooting Z80 interface\r\nCompiled: %s %s\r\n", __DATE__, __TIME__);
 
 	unsigned long nextTime = 0;
+	char message[32] = {0};
+	uint8_t message_pos = 0;
 
 	for (;;) {
 		unsigned long currentTime = millis();
@@ -471,7 +547,17 @@ int main(void)
 		}
 
 		if (haveRecievedIO) {
-			printf("%c", recievedIO);
+			if (stepMode)
+			{
+				message[message_pos++] = recievedIO;
+				message[message_pos] = 0;
+				if (message_pos > 31)
+					message_pos = 0;
+			}
+			else
+			{
+				printf("%c", recievedIO);
+			}
 			haveRecievedIO = false;
 		}
 
@@ -485,7 +571,7 @@ int main(void)
 			bool busReqBit = BUSREQ_PORT.IN & BUSREQ_PIN_bm;
 			bool busAckBit = BUSACK_PORT.IN & BUSACK_PIN_bm;
 
-			printf("%10lu - %4s %7s %04x %02x [%c%c%c%c%c%c] '%c' >%-32s\r",
+			printf("%10lu - %4s %7s %04x %02x [%c%c%c%c%c%c] '%c' [%-32s] > %-32s\r",
 					currentTime, 
 					(stepMode) ? "Step" : "Run",
 					(run) ? "Running" : "",
@@ -498,6 +584,7 @@ int main(void)
 					busReqBit  ? ' ' : 'Q',
 					busAckBit  ? ' ' : 'A',
 					(data > 32 && data < 128) ? data : ' ',
+					message,
 					command
 					);
 			//delay(1000);
