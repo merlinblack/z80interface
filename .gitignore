@@ -1,6 +1,9 @@
 *.o
 *.s
+*.rom
+*.lst
 *.elf
 *.hex
 .idea
 *~
+*.swp
