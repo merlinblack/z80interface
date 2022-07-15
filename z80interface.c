@@ -531,7 +531,7 @@ int main(void)
 
 		if (run && currentTime > nextTime) {
 			CLOCK_PORT.OUTTGL = CLOCK_PIN_bm;
-			//nextTime = currentTime + 1;
+			//nextTime = currentTime + 1; // Comment this line for go "fast"! (About 43Khz) ;-)
 		}
 
 		if (run == false && stepMode == true && button_released(&stepButton, currentTime)) {
