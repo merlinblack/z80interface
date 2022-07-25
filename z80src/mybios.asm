@@ -1,8 +1,13 @@
+#local
 RAMTOP equ $FFFF
 RAMBOT equ $8000
 NMI equ $66
 
 	org $0000
+	.globl print
+	.globl itoa
+	.globl Div8
+
 boot:
 	jp start
 
@@ -12,7 +17,7 @@ title_msg:
 	db $0D, $0A, "Z80 picoBIOS copyleft Nigel Atkinson 2022", $0D, $0A, $0A, 0
 
 start:
-	ld sp, RAMTOP
+	ld sp, $0000	; Top of RAM once it is pre-decremented
 	ei
 	ld hl, title_msg
 	call print
@@ -34,6 +39,7 @@ no_program_loaded:
 	ld hl, no_program_msg
 	call print
 	halt
+	jp start
 
 	org NMI
 handle_nmi:
@@ -49,7 +55,7 @@ print:
 	ld a, (hl)
 	and a
 	ret z
-	out ($AA), a
+	out ($70), a
 	inc hl
 	jr print
 
@@ -114,3 +120,5 @@ Div8Loop:
 Div8NextBit:
 	djnz Div8Loop
 	ret
+
+#endlocal

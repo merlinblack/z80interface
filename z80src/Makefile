@@ -1,5 +1,7 @@
 # Find the great Z80 asembler zasm at https://github.com/Megatokio/zasm
 
+all: mybios.rom ramimage.hex
+
 mybios.rom:	mybios.asm
 	zasm --opcodes --labels --cycles mybios.asm
 
