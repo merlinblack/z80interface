@@ -5,14 +5,17 @@ all: mybios.rom ramimage.hex
 mybios.rom:	mybios.asm
 	zasm --opcodes --labels --cycles mybios.asm
 
+mybios.inc: mybios.rom
+	./genROMInc.py
+
 burn: mybios.rom
 	minipro --no_size_warning --device AT28C256 --write mybios.rom
 
-ramimage.hex: ramimage.asm
+ramimage.hex: ramimage.asm mybios.inc
 	zasm --opcodes --labels --cycles --hex --target=ram ramimage.asm
 
 upload: ramimage.hex
 	./write.py
 
 clean:
-	rm -f *.lst *.hex *.rom
+	rm -f *.lst *.hex *.rom mybios.inc

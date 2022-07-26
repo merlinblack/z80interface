@@ -1,12 +1,9 @@
+
+	org $0000
+
 #local
 RAMTOP equ $FFFF
 RAMBOT equ $8000
-NMI equ $66
-
-	org $0000
-	.globl print
-	.globl itoa
-	.globl Div8
 
 boot:
 	jp start
@@ -17,7 +14,7 @@ title_msg:
 	db $0D, $0A, "Z80 picoBIOS copyleft Nigel Atkinson 2022", $0D, $0A, $0A, 0
 
 start:
-	ld sp, $0000	; Top of RAM once it is pre-decremented
+	ld sp, $0000	; SP will be top of RAM once it is pre-decremented
 	ei
 	ld hl, title_msg
 	call print
@@ -41,7 +38,7 @@ no_program_loaded:
 	halt
 	jp start
 
-	org NMI
+	org $66
 handle_nmi:
 	reti
 
@@ -49,18 +46,22 @@ no_program_msg:
 	db "No program loaded. Halting.", $0D, $0A, 0
 program_msg:
 	db "Program signature detected. Jumping to entry point.", $0D, $0A, 0
+#endlocal
 
 	; null terminated string pointed to by HL
 print:
+#local
 	ld a, (hl)
 	and a
 	ret z
 	out ($70), a
 	inc hl
 	jr print
+#endlocal
 
 	; Four byte buffer pointed to by HL, uint8 in A
 itoa:
+#local
 	push hl
 	ld d, 0		; flag for hundreds place in use
 	cp 200
@@ -105,9 +106,11 @@ ones_place:
 	ld (hl), 0
 	pop hl
 	ret
+#endlocal
 
 ; http://www.massmind.org/techref/zilog/z80/part4.htm
 Div8:					; this routine performs the operation HL=HL/D
+#local
 	xor a				; clearing the upper 8 bits of AHL
 	ld b,16				; the length of the dividend (16 bits)
 Div8Loop:
@@ -120,5 +123,5 @@ Div8Loop:
 Div8NextBit:
 	djnz Div8Loop
 	ret
-
 #endlocal
+
