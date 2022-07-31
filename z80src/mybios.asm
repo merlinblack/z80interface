@@ -11,52 +11,89 @@ boot:
 signature:
 	db "Alara"
 title_msg:
-	db $0D, $0A, "Z80 picoBIOS copyleft Nigel Atkinson 2022", $0D, $0A, $0A, 0
-
-start:
-	ld sp, $0000	; SP will be top of RAM once it is pre-decremented
-	ei
-	ld hl, title_msg
-	call print
-	; Test for signature at $8000 and jump to $8005
-	; if present. I.e. program has been loaded in RAM
-	ld hl, RAMBOT
-	ld de, signature
-	ld bc, 5 ; length
-signature_check:
-	ld a, (de)
-	inc de
-	cpi
-	jr nz, no_program_loaded
-	jp pe, signature_check
-	ld hl, program_msg
-	call print
-	jp $8005
-no_program_loaded:
-	ld hl, no_program_msg
-	call print
-	halt
-	jp start
+	db "Z80 picoBIOS (C)", 0
+title_msg2:
+	db "Nigel Atkinson 2022", 0
 
 	org $66
 handle_nmi:
 	reti
 
+start:
+	ld sp, $0000	; SP will be top of RAM once it is pre-decremented
+	ei
+
+	call lcd_init
+	call lcd_clear
+
+	ld hl, title_msg
+	ld c, lcd_Line1
+	call lcd_write_on_line
+
+	ld hl, title_msg2
+	ld c, lcd_Line2
+	call lcd_write_on_line
+
+	call signature_check
+	jr nz, no_program_loaded
+
+	ld hl, program_msg
+	ld c, lcd_Line3
+	call lcd_write_on_line
+
+	ld hl, program_msg2
+	ld c, lcd_Line4
+	call lcd_write_on_line
+
+	jp $8005
+
+no_program_loaded:
+	ld hl, no_program_msg
+	ld c, lcd_Line3
+	call lcd_write_on_line
+
+	ld hl, no_program_msg2
+	ld c, lcd_Line4
+	call lcd_write_on_line
+
+	halt
+	jp start
+
+signature_check:
+	; Test for signature at $8000 and jump to $8005
+	; if present. I.e. program has been loaded in RAM
+	ld hl, RAMBOT
+	ld de, signature
+	ld bc, 5 ; length
+signature_check_loop:
+	ld a, (de)
+	inc de
+	cpi
+	ret nz ;no_program_loaded
+	jp pe, signature_check_loop
+	ret ; found signature (z will be set)
+
 no_program_msg:
-	db "No program loaded. Halting.", $0D, $0A, 0
+	;   12345678901234567890
+	;                       12345678901234567890
+	db "No program loaded", 0
+no_program_msg2:
+	db "Halting.", 0
 program_msg:
-	db "Program signature detected. Jumping to entry point.", $0D, $0A, 0
+	db "Program sig detected", 0
+program_msg2:
+	db "Jumping to entry.", 0
 #endlocal
 
 	; null terminated string pointed to by HL
-print:
+serial_print:
 #local
 	ld a, (hl)
 	and a
 	ret z
 	out ($70), a
 	inc hl
-	jr print
+	jr serial_print
 #endlocal
 
 	; Four byte buffer pointed to by HL, uint8 in A
@@ -108,6 +145,18 @@ ones_place:
 	ret
 #endlocal
 
+	; get the length of a c style string at hl
+	; return result in hl
+strlen:
+	ld de, hl
+	ld a, 0
+	ld bc, 0
+	cpir
+	dec hl	; don't count the terminating zero
+	add a	; reset carry
+	sbc hl, de
+	ret
+
 ; http://www.massmind.org/techref/zilog/z80/part4.htm
 Div8:					; this routine performs the operation HL=HL/D
 #local
@@ -125,3 +174,4 @@ Div8NextBit:
 	ret
 #endlocal
 
+#include "lcd.asm"
