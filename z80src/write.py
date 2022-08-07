@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 
 import serial
+import sys
 import time
+
 
 def send(ser: serial.Serial, line):
   ret = '';
@@ -29,19 +31,18 @@ def send(ser: serial.Serial, line):
 
   return ret
 
-def main():
+
+def main(filename):
   ser = serial.Serial('/dev/ttyACM0', 115200, timeout=10, xonxoff=False)
   while (ser.in_waiting):
     print(ser.readline().decode('ascii', errors='ignore'))
 
-  with open('ramimage.hex', 'r') as f:
-    print(send(ser, 'Nodisp\r'), end='')
+  with open(filename, 'r') as f:
+    print(send(ser, '\rNodisp\r'), end='')
     print(send(ser, 'Load 0000\r'), end='')
     for line in f:
       print(send(ser, line), end='')
 
-  print(send(ser, 'Dump 8000\r'), end='')
-  time.sleep(1)
   while ser.in_waiting:
     tail = ser.readline().decode('ascii', errors='ignore')
     print(tail, end='')
@@ -49,5 +50,9 @@ def main():
 
   print('\nDone')
 
+
 if __name__ == '__main__':
-  main()
+  if len(sys.argv) < 1:
+    print('Missing filename argument.')
+  else:
+    main(sys.argv[1])

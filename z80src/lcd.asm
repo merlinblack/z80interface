@@ -23,7 +23,7 @@ lcd_wait_if_busy:
 loop:
 	in a, (lcd_Instruction)
 	rlca
-	ret c
+	ret nc
 	djnz loop
 	ret
 #endlocal
@@ -53,6 +53,7 @@ lcd_clear:
 	ret
 
 lcd_write:
+	call lcd_wait_if_busy
 	ld a, (hl)
 	and a
 	ret z
