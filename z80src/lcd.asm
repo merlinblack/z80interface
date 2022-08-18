@@ -64,6 +64,7 @@ lcd_write:
 lcd_write_on_line:
 	call lcd_set_cursor
 	call lcd_write
+	ret
 
 lcd_set_cursor:
 	call lcd_wait_if_busy
